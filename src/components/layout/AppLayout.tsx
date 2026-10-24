@@ -40,7 +40,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <Sidebar />
 
           {/* Main Content Area */}
-          <div className="flex-1 flex flex-col min-w-0 pb-20 md:pb-8">
+          <div className="flex-1 flex flex-col min-w-0 pb-[calc(160px+env(safe-area-inset-bottom,0px))] md:pb-8">
             <TopBar
               onToggleMobileMenu={() => setMobileDrawerOpen(!mobileDrawerOpen)}
               onOpenSupabaseModal={() => setSupabaseModalOpen(true)}
@@ -122,7 +122,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <MonthRolloverModal />
 
           {/* Floating Add Expense Button on Mobile */}
-          <FloatingAddExpenseButton />
+          <FloatingAddExpenseButton isDrawerOpen={mobileDrawerOpen} />
 
           {/* Quick Add / Edit Expense Modal */}
           <QuickAddExpenseModal onSaved={handleExpenseSaved} />

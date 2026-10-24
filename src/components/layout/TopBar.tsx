@@ -89,13 +89,13 @@ export function TopBar({ onToggleMobileMenu, onOpenSupabaseModal }: TopBarProps)
   const roleLabel = user ? user.email : 'Click to Log In';
 
   return (
-    <header className="sticky top-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-4 sm:px-8 py-3.5 flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-20 bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border-b border-slate-100 dark:border-slate-800 px-3 sm:px-8 py-2.5 sm:py-3.5 flex items-center justify-between gap-2 sm:gap-4">
       {/* Mobile Menu trigger & Search Bar */}
-      <div className="flex items-center gap-3 flex-1 max-w-md">
+      <div className="flex items-center gap-2 sm:gap-3 flex-1 max-w-md">
         <button
           type="button"
           onClick={onToggleMobileMenu}
-          className="md:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+          className="md:hidden p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors shrink-0"
           aria-label="Open navigation menu"
         >
           <Menu className="w-5 h-5" />
@@ -114,7 +114,7 @@ export function TopBar({ onToggleMobileMenu, onOpenSupabaseModal }: TopBarProps)
       </div>
 
       {/* Right Actions */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1 sm:gap-2.5 shrink-0">
         {/* Quick Add Expense Desktop Button */}
         <button
           type="button"
@@ -129,21 +129,22 @@ export function TopBar({ onToggleMobileMenu, onOpenSupabaseModal }: TopBarProps)
         <button
           type="button"
           onClick={onOpenSupabaseModal}
-          className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border transition-all ${
+          className={`flex items-center gap-1 px-2 sm:px-2.5 py-1.5 sm:py-1 rounded-full text-xs font-semibold border transition-all shrink-0 ${
             isConfigured
               ? 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800'
               : 'bg-amber-50 text-amber-800 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800'
           }`}
-          title="Supabase Connection Status"
+          title={isConfigured ? 'Connected to Supabase' : 'Offline / Demo Mode'}
+          aria-label="Database connection status"
         >
           {isConfigured ? (
             <>
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span className="hidden sm:inline">Supabase Connected</span>
             </>
           ) : (
             <>
-              <Database className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+              <Database className="w-3.5 h-3.5 text-amber-600 animate-pulse shrink-0" />
               <span className="hidden sm:inline">Supabase Setup</span>
             </>
           )}
@@ -156,7 +157,7 @@ export function TopBar({ onToggleMobileMenu, onOpenSupabaseModal }: TopBarProps)
         <button
           type="button"
           onClick={toggleDarkMode}
-          className="p-2 rounded-xl text-slate-500 hover:text-navy-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+          className="p-1.5 sm:p-2 rounded-xl text-slate-500 hover:text-navy-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shrink-0"
           title={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
           aria-label={darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
         >
@@ -170,9 +171,11 @@ export function TopBar({ onToggleMobileMenu, onOpenSupabaseModal }: TopBarProps)
         {/* User Avatar + Name */}
         <Link
           href={user ? '/settings' : '/login'}
-          className="flex items-center gap-2 pl-2 border-l border-slate-200 dark:border-slate-800 hover:opacity-80 transition-opacity"
+          className="flex items-center gap-2 pl-1.5 sm:pl-2.5 border-l border-slate-200 dark:border-slate-800 hover:opacity-80 transition-opacity shrink-0"
+          title={displayName}
+          aria-label="Account Settings"
         >
-          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-brand-primary to-amber-400 text-white font-extrabold text-sm flex items-center justify-center shadow-sm">
+          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-tr from-brand-primary to-amber-400 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center shadow-sm shrink-0">
             {displayName.charAt(0).toUpperCase()}
           </div>
           <div className="hidden lg:block text-left">

@@ -112,12 +112,12 @@ export function NotificationDropdown() {
   };
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative shrink-0" ref={dropdownRef}>
       {/* Bell Button */}
       <button
         type="button"
         onClick={handleToggle}
-        className={`relative p-2 rounded-xl transition-colors select-none ${
+        className={`relative p-1.5 sm:p-2 rounded-xl transition-colors select-none shrink-0 ${
           isOpen
             ? 'bg-slate-100 text-brand-primary dark:bg-slate-800'
             : 'text-slate-500 hover:text-navy-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800'

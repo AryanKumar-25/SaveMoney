@@ -17,6 +17,8 @@ import {
   LogOut,
   Sparkles,
   Coins,
+  ShieldCheck,
+  Database,
 } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -45,7 +47,7 @@ interface SidebarProps {
 
 export function Sidebar({ onNavigate, isMobileDrawer = false }: SidebarProps) {
   const pathname = usePathname();
-  const { isDemoMode, user, profile, signOut } = useAuth();
+  const { isConfigured, isDemoMode, user, profile, signOut } = useAuth();
   const [unreadAlerts, setUnreadAlerts] = useState<number>(0);
 
   useEffect(() => {
@@ -88,6 +90,17 @@ export function Sidebar({ onNavigate, isMobileDrawer = false }: SidebarProps) {
           <p className="text-[11px] text-slate-400 font-medium">Smart Indian Spending</p>
         </div>
       </div>
+
+      {/* Connection & Mode Badge in Drawer */}
+      {isMobileDrawer && isConfigured && (
+        <div className="mb-4 mx-1 p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200/60 dark:border-emerald-900/40 text-emerald-800 dark:text-emerald-300 text-xs flex items-center gap-2">
+          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+          <div className="leading-tight">
+            <span className="font-semibold block">Supabase Connected</span>
+            <span className="text-[10px] opacity-80">Cloud database active</span>
+          </div>
+        </div>
+      )}
 
       {/* Demo Mode Badge */}
       {isDemoMode && (
