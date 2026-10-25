@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { StorageService } from '@/lib/storage';
 import { BalanceAdjustment } from '@/lib/types';
 import { formatINR, formatMonthName, getCurrentMonthKey } from '@/lib/formatters';
+import { triggerAlertEvaluation } from '@/lib/alertClient';
 import {
   IndianRupee,
   PiggyBank,
@@ -118,6 +119,8 @@ export function MonthlyBudgetSetup() {
 
     try {
       await updateMonthlyBudget(inc, sav);
+      // Re-evaluate alerts after budget update
+      await triggerAlertEvaluation({ userId, month: currentMonth, showToasts: false });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch {
@@ -409,10 +412,12 @@ export function MonthlyBudgetSetup() {
         }}
         onDeleteAdjustment={async (id) => {
           await StorageService.deleteBalanceAdjustment(id, userId);
+          await triggerAlertEvaluation({ userId, month: currentMonth });
           refreshBudget();
         }}
         onUndoTransfer={async (id) => {
           await StorageService.undoExtraMoneyTransfer(id, userId);
+          await triggerAlertEvaluation({ userId, month: currentMonth });
           refreshBudget();
         }}
       />

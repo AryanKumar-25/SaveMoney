@@ -18,6 +18,7 @@ import {
 } from '@/lib/types';
 import { parseCSVStatement } from '@/lib/safeguardCalculations';
 import { formatINR } from '@/lib/formatters';
+import { triggerAlertEvaluation } from '@/lib/alertClient';
 import {
   Upload,
   FileSpreadsheet,
@@ -287,6 +288,22 @@ export default function StatementImportPage() {
           },
           userId
         );
+      }
+
+      // Re-evaluate alerts after statement import
+      if (selectedRows.length > 0) {
+        const last = selectedRows[selectedRows.length - 1];
+        await triggerAlertEvaluation({
+          userId,
+          month: last.date.slice(0, 7),
+          lastExpense: {
+            amount: last.debitAmount,
+            merchant: last.description,
+            category: last.suggestedCategory,
+            date: last.date,
+          },
+          showToasts: true,
+        });
       }
 
       setImportedTotal(selectedRows.length);

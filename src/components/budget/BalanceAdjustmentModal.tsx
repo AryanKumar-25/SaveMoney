@@ -9,6 +9,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { BalanceAdjustment } from '@/lib/types';
 import { formatINR, getCurrentMonthKey, formatMonthName } from '@/lib/formatters';
 import { calculateSafeToSpendToday } from '@/lib/calculations';
+import { triggerAlertEvaluation } from '@/lib/alertClient';
 import {
   X,
   SlidersHorizontal,
@@ -148,6 +149,12 @@ export function BalanceAdjustmentModal({
           userId
         );
       }
+
+      // Re-evaluate alerts on server with updated balance adjustment
+      await triggerAlertEvaluation({
+        userId,
+        month: targetMonth,
+      });
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('savemoney-adjustments-updated'));

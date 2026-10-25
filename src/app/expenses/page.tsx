@@ -8,6 +8,7 @@ import { StorageService } from '@/lib/storage';
 import { Expense, Category, Account } from '@/lib/types';
 import { formatINR, getCurrentMonthKey } from '@/lib/formatters';
 import { exportExpensesToCSV } from '@/lib/exportUtils';
+import { triggerAlertEvaluation } from '@/lib/alertClient';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -119,31 +120,13 @@ export default function ExpensesPage() {
         window.dispatchEvent(new Event('savemoney-expense-updated'));
       }
 
-      // Re-evaluate alerts after delete
+      // Re-evaluate alerts after delete (awaited so errors are not swallowed)
       const expenseMonth = date.slice(0, 7);
-      fetch('/api/alerts/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          month: expenseMonth,
-          userId,
-          lastExpense: null,
-        }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data?.newAlerts?.length > 0) {
-            data.newAlerts.forEach((alert: { message: string; severity: string }) => {
-              window.dispatchEvent(
-                new CustomEvent('savemoney-show-toast', {
-                  detail: { message: alert.message, severity: alert.severity },
-                })
-              );
-            });
-            window.dispatchEvent(new Event('savemoney-alerts-updated'));
-          }
-        })
-        .catch((err) => console.warn('Alert eval after delete:', err));
+      await triggerAlertEvaluation({
+        userId,
+        month: expenseMonth,
+        showToasts: true,
+      });
     } catch (err) {
       alert('Failed to delete expense');
     } finally {

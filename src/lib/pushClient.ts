@@ -10,15 +10,70 @@ export function urlBase64ToUint8Array(base64String: string) {
 }
 
 /**
- * Pure capability check. Checks ONLY serviceWorker, PushManager, and Notification.
+ * Detailed push support diagnostics with actionable human-readable explanations.
+ */
+export function getPushSupportDetails(): { supported: boolean; reason?: string } {
+  if (typeof window === 'undefined') {
+    return { supported: false, reason: 'Checking client environment...' };
+  }
+
+  // Protocol check
+  const isSecure =
+    window.location.protocol === 'https:' ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1';
+  if (!isSecure) {
+    return {
+      supported: false,
+      reason: 'Web push requires a secure HTTPS connection.',
+    };
+  }
+
+  const hasServiceWorker = 'serviceWorker' in navigator;
+  const hasPushManager = 'PushManager' in window;
+  const hasNotification = 'Notification' in window;
+
+  if (hasServiceWorker && hasPushManager && hasNotification) {
+    return { supported: true };
+  }
+
+  // Detect iOS Safari
+  const isIOS =
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+  if (isIOS) {
+    const isStandalone =
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true ||
+      window.matchMedia('(display-mode: standalone)').matches;
+
+    if (!isStandalone) {
+      return {
+        supported: false,
+        reason:
+          'On iPhone / iPad, push notifications require adding SaveMoney to your Home Screen first (Tap Share → "Add to Home Screen").',
+      };
+    }
+  }
+
+  if (!hasServiceWorker) {
+    return { supported: false, reason: 'Service workers are disabled or not supported in this browser.' };
+  }
+  if (!hasPushManager) {
+    return { supported: false, reason: 'PushManager is not supported by this browser.' };
+  }
+  if (!hasNotification) {
+    return { supported: false, reason: 'Web Notifications API is not supported in this browser.' };
+  }
+
+  return { supported: false, reason: 'Browser does not support Web Push notifications.' };
+}
+
+/**
+ * Pure capability check.
  */
 export function isPushNotificationSupported(): boolean {
-  if (typeof window === 'undefined') return false;
-  return (
-    'serviceWorker' in navigator &&
-    'PushManager' in window &&
-    'Notification' in window
-  );
+  return getPushSupportDetails().supported;
 }
 
 /**
@@ -32,13 +87,10 @@ export async function ensureServiceWorkerRegistered(): Promise<ServiceWorkerRegi
   try {
     const existing = await navigator.serviceWorker.getRegistration();
     if (existing) {
-      console.log('[SaveMoney Push] Active ServiceWorker found:', existing.scope);
       return existing;
     }
 
-    console.log('[SaveMoney Push] Registering /sw.js...');
     const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    console.log('[SaveMoney Push] ServiceWorker successfully registered with scope:', reg.scope);
     return reg;
   } catch (err) {
     console.warn('[SaveMoney Push] ServiceWorker registration failed:', err);
@@ -83,6 +135,7 @@ export interface PushClientState {
   supported: boolean;
   permission: NotificationPermission | 'not_supported';
   isSubscribed: boolean;
+  unsupportedReason?: string;
   error?: string;
 }
 
@@ -90,12 +143,15 @@ export interface PushClientState {
  * Inspects push subscription state on the client without blocking.
  */
 export async function getPushSubscriptionState(): Promise<PushClientState> {
-  if (!isPushNotificationSupported()) {
+  const support = getPushSupportDetails();
+
+  if (!support.supported) {
     return {
       status: 'not_supported',
       supported: false,
       permission: 'not_supported',
       isSubscribed: false,
+      unsupportedReason: support.reason,
     };
   }
 
@@ -144,8 +200,12 @@ export async function registerPushSubscription(userId?: string): Promise<{
   success: boolean;
   error?: string;
 }> {
-  if (!isPushNotificationSupported()) {
-    return { success: false, error: 'Push notifications are not supported on this browser.' };
+  const support = getPushSupportDetails();
+  if (!support.supported) {
+    return {
+      success: false,
+      error: support.reason || 'Push notifications are not supported on this browser.',
+    };
   }
 
   const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -159,12 +219,16 @@ export async function registerPushSubscription(userId?: string): Promise<{
   try {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      return { success: false, error: 'Push notification permission was denied or dismissed.' };
+      return {
+        success: false,
+        error:
+          'Notification permission was not granted. Please allow notifications in your browser address bar/settings.',
+      };
     }
 
     const reg = await getActiveRegistrationWithTimeout(4000);
     if (!reg) {
-      throw new Error('Could not establish service worker registration for push.');
+      throw new Error('Could not establish active service worker registration for push.');
     }
 
     let sub = await reg.pushManager.getSubscription();
@@ -190,7 +254,6 @@ export async function registerPushSubscription(userId?: string): Promise<{
       throw new Error(data.error || 'Failed to save push subscription on server');
     }
 
-    console.log('[SaveMoney Push] Subscription successfully registered & saved to server');
     return { success: true };
   } catch (err: unknown) {
     console.error('[SaveMoney Push] Error registering push subscription:', err);
@@ -218,7 +281,6 @@ export async function unregisterPushSubscription(userId?: string): Promise<boole
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ endpoint, userId }),
       });
-      console.log('[SaveMoney Push] Subscription unsubscribed');
     }
     return true;
   } catch (err) {

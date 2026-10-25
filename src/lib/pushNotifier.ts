@@ -1,9 +1,12 @@
 import webpush from 'web-push';
 import { PushSubscriptionItem } from './types';
+import { getSupabaseServerClient } from './supabase/server';
+import { isSupabaseConfigured } from './supabase/client';
+import { StorageService } from './storage';
 
 let vapidConfigured = false;
 
-function ensureVapidConfig() {
+export function ensureVapidConfig(): boolean {
   if (vapidConfigured) return true;
 
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
@@ -19,7 +22,7 @@ function ensureVapidConfig() {
     vapidConfigured = true;
     return true;
   } catch (err) {
-    console.warn('Failed to configure web-push VAPID details:', err);
+    console.warn('[PushNotifier] Failed to configure web-push VAPID details:', err);
     return false;
   }
 }
@@ -32,13 +35,18 @@ export async function sendWebPushNotification(
     url?: string;
     tag?: string;
   }
-): Promise<{ sent: number; failed: number }> {
+): Promise<{ sent: number; failed: number; errors: string[] }> {
   if (!ensureVapidConfig()) {
-    return { sent: 0, failed: 0 };
+    return {
+      sent: 0,
+      failed: subscriptions.length,
+      errors: ['VAPID keys not configured in environment variables.'],
+    };
   }
 
   let sent = 0;
   let failed = 0;
+  const errors: string[] = [];
 
   const jsonPayload = JSON.stringify({
     title: payload.title,
@@ -47,6 +55,9 @@ export async function sendWebPushNotification(
     url: payload.url || '/alerts',
     tag: payload.tag || 'savemoney-alert',
   });
+
+  const supabase = getSupabaseServerClient();
+  const useRemote = isSupabaseConfigured();
 
   const promises = subscriptions.map(async (sub) => {
     if (!sub.endpoint || !sub.p256dh || !sub.auth) return;
@@ -66,10 +77,30 @@ export async function sendWebPushNotification(
       sent++;
     } catch (err: unknown) {
       failed++;
-      console.warn('Failed to send web-push to endpoint:', err);
+      const statusCode = (err as { statusCode?: number })?.statusCode;
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      errors.push(`Endpoint error (${statusCode || 'unknown'}): ${errorMsg}`);
+      console.warn(`[PushNotifier] Failed to send push to ${sub.endpoint.slice(0, 30)}...:`, errorMsg);
+
+      // Handle failures: delete dead subscription on 404 (Not Found) or 410 (Gone / Unsubscribed)
+      if (statusCode === 404 || statusCode === 410) {
+        console.log(`[PushNotifier] Removing dead subscription (${statusCode}): ${sub.endpoint.slice(0, 30)}...`);
+        try {
+          if (useRemote) {
+            await supabase
+              .from('push_subscriptions')
+              .delete()
+              .eq('endpoint', sub.endpoint);
+          } else {
+            await StorageService.deletePushSubscription(sub.endpoint, sub.user_id);
+          }
+        } catch (cleanupErr) {
+          console.warn('[PushNotifier] Error cleaning up dead subscription:', cleanupErr);
+        }
+      }
     }
   });
 
   await Promise.allSettled(promises);
-  return { sent, failed };
+  return { sent, failed, errors };
 }

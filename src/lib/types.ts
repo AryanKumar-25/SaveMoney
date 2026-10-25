@@ -151,10 +151,13 @@ export interface AlertItem {
   user_id?: string;
   type: AlertType;
   severity: AlertSeverity;
+  title?: string;
   message: string;
   is_read: boolean;
   month: string; // 'YYYY-MM'
   dedupe_key?: string | null;
+  push_sent_at?: string | null;
+  push_error?: string | null;
   created_at: string;
 }
 
@@ -177,7 +180,9 @@ export interface PushSubscriptionItem {
   endpoint: string;
   p256dh: string;
   auth: string;
+  user_agent?: string | null;
   created_at?: string;
+  updated_at?: string;
 }
 
 export interface ExtraMoneyEntry {

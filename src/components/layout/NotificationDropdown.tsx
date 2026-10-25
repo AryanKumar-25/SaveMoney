@@ -1,9 +1,10 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 import { StorageService } from '@/lib/storage';
+import { supabase } from '@/lib/supabase/client';
 import { AlertItem } from '@/lib/types';
 import {
   Bell,
@@ -12,7 +13,7 @@ import {
   Info,
   AlertTriangle,
   AlertCircle,
-  Sparkles,
+  ExternalLink,
 } from 'lucide-react';
 
 export function NotificationDropdown() {
@@ -21,20 +22,20 @@ export function NotificationDropdown() {
 
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const unreadCount = alerts.filter((a) => !a.is_read).length;
 
-  const loadAlerts = async () => {
+  const loadAlerts = useCallback(async () => {
     try {
       const items = await StorageService.getAlerts(userId);
       setAlerts(items);
     } catch (err) {
-      console.warn('Failed to load alerts:', err);
+      console.warn('Failed to load alerts in bell:', err);
     }
-  };
+  }, [userId]);
 
+  // Initial load + window event listeners
   useEffect(() => {
     loadAlerts();
 
@@ -42,13 +43,56 @@ export function NotificationDropdown() {
       loadAlerts();
     };
 
+    const handleFocus = () => {
+      loadAlerts();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadAlerts();
+      }
+    };
+
     if (typeof window !== 'undefined') {
       window.addEventListener('savemoney-alerts-updated', handleUpdate);
+      window.addEventListener('focus', handleFocus);
+      document.addEventListener('visibilitychange', handleVisibility);
       return () => {
         window.removeEventListener('savemoney-alerts-updated', handleUpdate);
+        window.removeEventListener('focus', handleFocus);
+        document.removeEventListener('visibilitychange', handleVisibility);
       };
     }
-  }, [userId]);
+  }, [loadAlerts]);
+
+  // Supabase Realtime subscription on alerts table
+  useEffect(() => {
+    if (!userId) return;
+
+    try {
+      const channel = supabase
+        .channel(`alerts-bell-${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'alerts',
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            loadAlerts();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch (err) {
+      console.warn('Realtime subscription not available for bell:', err);
+    }
+  }, [userId, loadAlerts]);
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -64,24 +108,47 @@ export function NotificationDropdown() {
     }
   }, [isOpen]);
 
-  const handleToggle = () => {
-    setIsOpen(!isOpen);
+  // When opening dropdown, automatically mark unread alerts as read
+  const handleToggle = async () => {
+    const nextState = !isOpen;
+    setIsOpen(nextState);
+
+    if (nextState && unreadCount > 0) {
+      // Optimistically mark all visible as read
+      setAlerts((prev) => prev.map((a) => ({ ...a, is_read: true })));
+      try {
+        await StorageService.markAllAlertsAsRead(userId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('savemoney-alerts-updated'));
+        }
+      } catch (e) {
+        console.warn('Failed to auto-mark alerts read on open:', e);
+      }
+    }
   };
 
   const handleMarkAllRead = async () => {
-    await StorageService.markAllAlertsAsRead(userId);
     setAlerts((prev) => prev.map((a) => ({ ...a, is_read: true })));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('savemoney-alerts-updated'));
+    try {
+      await StorageService.markAllAlertsAsRead(userId);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('savemoney-alerts-updated'));
+      }
+    } catch (e) {
+      console.warn('Failed to mark alerts read:', e);
     }
   };
 
   const handleItemClick = async (alert: AlertItem) => {
     if (!alert.is_read) {
-      await StorageService.markAlertAsRead(alert.id, userId);
       setAlerts((prev) => prev.map((a) => (a.id === alert.id ? { ...a, is_read: true } : a)));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('savemoney-alerts-updated'));
+      try {
+        await StorageService.markAlertAsRead(alert.id, userId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('savemoney-alerts-updated'));
+        }
+      } catch (e) {
+        console.warn('Failed to mark single alert read:', e);
       }
     }
   };
@@ -149,26 +216,36 @@ export function NotificationDropdown() {
               )}
             </div>
 
-            {unreadCount > 0 && (
-              <button
-                type="button"
-                onClick={handleMarkAllRead}
-                className="text-[11px] font-bold text-slate-400 hover:text-brand-primary flex items-center gap-1 transition-colors"
+            <div className="flex items-center gap-2">
+              <Link
+                href="/settings/alerts"
+                onClick={() => setIsOpen(false)}
+                className="text-[11px] font-semibold text-slate-400 hover:text-navy-900 dark:hover:text-white transition-colors"
+                title="Alert diagnostics and settings"
               >
-                <CheckCheck className="w-3.5 h-3.5" /> Mark all read
-              </button>
-            )}
+                Diagnostics
+              </Link>
+              {unreadCount > 0 && (
+                <button
+                  type="button"
+                  onClick={handleMarkAllRead}
+                  className="text-[11px] font-bold text-slate-400 hover:text-brand-primary flex items-center gap-1 transition-colors"
+                >
+                  <CheckCheck className="w-3.5 h-3.5" /> Mark read
+                </button>
+              )}
+            </div>
           </div>
 
-          {/* List of Latest 5 Alerts */}
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-80 overflow-y-auto">
+          {/* List of Latest 10 Alerts */}
+          <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-96 overflow-y-auto">
             {alerts.length === 0 ? (
               <div className="p-8 text-center text-xs text-slate-400">
                 <Bell className="w-7 h-7 mx-auto mb-2 opacity-30 text-slate-400" />
                 No alerts yet. You&apos;ll be notified when budget limits are approached.
               </div>
             ) : (
-              alerts.slice(0, 5).map((alert) => (
+              alerts.slice(0, 10).map((alert) => (
                 <div
                   key={alert.id}
                   onClick={() => handleItemClick(alert)}
@@ -180,11 +257,16 @@ export function NotificationDropdown() {
                 >
                   {getSeverityIcon(alert.severity)}
                   <div className="flex-1 min-w-0">
+                    {alert.title && (
+                      <p className="text-xs font-black text-navy-900 dark:text-white mb-0.5">
+                        {alert.title}
+                      </p>
+                    )}
                     <p
                       className={`text-xs leading-relaxed ${
                         !alert.is_read
-                          ? 'font-bold text-navy-900 dark:text-white'
-                          : 'text-slate-600 dark:text-slate-300 font-medium'
+                          ? 'font-medium text-navy-900 dark:text-slate-100'
+                          : 'text-slate-600 dark:text-slate-400 font-normal'
                       }`}
                     >
                       {alert.message}

@@ -12,6 +12,7 @@ import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { formatINR } from '@/lib/formatters';
+import { triggerAlertEvaluation } from '@/lib/alertClient';
 import {
   X,
   Sparkles,
@@ -242,39 +243,20 @@ export function QuickAddExpenseModal({ onSaved }: { onSaved?: () => void }) {
         );
       }
 
-      // Evaluate alerts server-side
+      // Evaluate alerts server-side and trigger immediate toast & bell update
       const expenseMonth = isoDate.slice(0, 7);
-      try {
-        const evalRes = await fetch('/api/alerts/evaluate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            month: expenseMonth,
-            userId,
-            lastExpense: {
-              amount: numAmount,
-              category,
-              note: note.trim() || undefined,
-            },
-          }),
-        });
-
-        if (evalRes.ok) {
-          const evalData = await evalRes.json();
-          if (evalData.newAlerts && evalData.newAlerts.length > 0) {
-            evalData.newAlerts.forEach((alert: { message: string; severity: string }) => {
-              window.dispatchEvent(
-                new CustomEvent('savemoney-show-toast', {
-                  detail: { message: alert.message, severity: alert.severity },
-                })
-              );
-            });
-            window.dispatchEvent(new Event('savemoney-alerts-updated'));
-          }
-        }
-      } catch (alertErr) {
-        console.warn('Alert evaluation failed:', alertErr);
-      }
+      await triggerAlertEvaluation({
+        userId,
+        month: expenseMonth,
+        lastExpense: {
+          amount: numAmount,
+          merchant: merchant.trim() || undefined,
+          category,
+          note: note.trim() || undefined,
+          date: isoDate,
+        },
+        showToasts: true,
+      });
 
       closeModal();
       onSaved?.();

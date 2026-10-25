@@ -134,13 +134,11 @@ export class StorageService {
     }
 
     // LocalStorage fallback (only returns what user saved, never fake data)
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(`${STORAGE_KEYS.BUDGET}${month}`);
-      if (stored) {
-        try {
-          return { budget: JSON.parse(stored), isFromDemo: true };
-        } catch {}
-      }
+    const stored = safeGetItem(`${STORAGE_KEYS.BUDGET}${month}`);
+    if (stored) {
+      try {
+        return { budget: JSON.parse(stored), isFromDemo: true };
+      } catch {}
     }
 
     return { budget: null, isFromDemo: !canUseSupabase };
@@ -188,9 +186,7 @@ export class StorageService {
         updated_at: data.updated_at,
       };
 
-      if (typeof window !== 'undefined') {
-        localStorage.setItem(`${STORAGE_KEYS.BUDGET}${month}`, JSON.stringify(budget));
-      }
+      safeSetItem(`${STORAGE_KEYS.BUDGET}${month}`, JSON.stringify(budget));
 
       return budget;
     }
@@ -205,9 +201,7 @@ export class StorageService {
       updated_at: new Date().toISOString(),
     };
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(`${STORAGE_KEYS.BUDGET}${month}`, JSON.stringify(budget));
-    }
+    safeSetItem(`${STORAGE_KEYS.BUDGET}${month}`, JSON.stringify(budget));
 
     return budget;
   }
@@ -251,13 +245,11 @@ export class StorageService {
     }
 
     // LocalStorage fallback
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(`${STORAGE_KEYS.FIXED_EXPENSES}${month}`);
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch {}
-      }
+    const stored = safeGetItem(`${STORAGE_KEYS.FIXED_EXPENSES}${month}`);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {}
     }
 
     // Default to clean empty list
@@ -324,18 +316,16 @@ export class StorageService {
     }
 
     // Local storage
-    if (typeof window !== 'undefined') {
-      const currentList = await this.getFixedExpenses(expense.month, userId);
-      const index = currentList.findIndex((item) => item.id === record.id);
-      let updatedList: FixedExpense[];
-      if (index >= 0) {
-        updatedList = [...currentList];
-        updatedList[index] = record;
-      } else {
-        updatedList = [record, ...currentList];
-      }
-      localStorage.setItem(`${STORAGE_KEYS.FIXED_EXPENSES}${expense.month}`, JSON.stringify(updatedList));
+    const currentList = await this.getFixedExpenses(expense.month, userId);
+    const index = currentList.findIndex((item) => item.id === record.id);
+    let updatedList: FixedExpense[];
+    if (index >= 0) {
+      updatedList = [...currentList];
+      updatedList[index] = record;
+    } else {
+      updatedList = [record, ...currentList];
     }
+    safeSetItem(`${STORAGE_KEYS.FIXED_EXPENSES}${expense.month}`, JSON.stringify(updatedList));
 
     return record;
   }
@@ -357,11 +347,9 @@ export class StorageService {
       if (error) throw error;
     }
 
-    if (typeof window !== 'undefined') {
-      const currentList = await this.getFixedExpenses(month, userId);
-      const filtered = currentList.filter((item) => item.id !== id);
-      localStorage.setItem(`${STORAGE_KEYS.FIXED_EXPENSES}${month}`, JSON.stringify(filtered));
-    }
+    const currentList = await this.getFixedExpenses(month, userId);
+    const filtered = currentList.filter((item) => item.id !== id);
+    safeSetItem(`${STORAGE_KEYS.FIXED_EXPENSES}${month}`, JSON.stringify(filtered));
   }
 
   /**
@@ -604,11 +592,46 @@ export class StorageService {
       }
     }
 
-    if (typeof window !== 'undefined') {
-      const month = date ? date.slice(0, 7) : getCurrentMonthKey();
-      const current = await this.getMonthExpenses(month, userId);
+    let targetMonth: string | undefined;
+    if (date && /^\d{4}-\d{2}/.test(date)) {
+      targetMonth = date.slice(0, 7);
+    }
+
+    if (targetMonth) {
+      const current = await this.getMonthExpenses(targetMonth, userId);
       const filtered = current.filter((e) => e.id !== id);
-      localStorage.setItem(`${STORAGE_KEYS.EXPENSES}${month}`, JSON.stringify(filtered));
+      safeSetItem(`${STORAGE_KEYS.EXPENSES}${targetMonth}`, JSON.stringify(filtered));
+    } else {
+      const prefix = STORAGE_KEYS.EXPENSES;
+      for (const key of Object.keys(memoryFallback)) {
+        if (key.startsWith(prefix)) {
+          try {
+            const raw = memoryFallback[key];
+            if (raw) {
+              const parsed: Expense[] = JSON.parse(raw);
+              if (Array.isArray(parsed) && parsed.some((e) => e.id === id)) {
+                safeSetItem(key, JSON.stringify(parsed.filter((e) => e.id !== id)));
+              }
+            }
+          } catch {}
+        }
+      }
+      if (typeof window !== 'undefined' && typeof window.localStorage !== 'undefined') {
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key && key.startsWith(prefix)) {
+            try {
+              const raw = localStorage.getItem(key);
+              if (raw) {
+                const parsed: Expense[] = JSON.parse(raw);
+                if (Array.isArray(parsed) && parsed.some((e) => e.id === id)) {
+                  safeSetItem(key, JSON.stringify(parsed.filter((e) => e.id !== id)));
+                }
+              }
+            } catch {}
+          }
+        }
+      }
     }
   }
 
@@ -932,9 +955,7 @@ export class StorageService {
           .order('created_at', { ascending: false });
 
         if (!error && data) {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(STORAGE_KEYS.ALERTS, JSON.stringify(data));
-          }
+          safeSetItem(STORAGE_KEYS.ALERTS, JSON.stringify(data));
           return data;
         }
       } catch (err) {
@@ -942,13 +963,11 @@ export class StorageService {
       }
     }
 
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(STORAGE_KEYS.ALERTS);
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch {}
-      }
+    const stored = safeGetItem(STORAGE_KEYS.ALERTS);
+    if (stored) {
+      try {
+        return JSON.parse(stored);
+      } catch {}
     }
 
     return [];
@@ -989,10 +1008,8 @@ export class StorageService {
           .single();
 
         if (!error && data) {
-          if (typeof window !== 'undefined') {
-            const current = await this.getAlerts(userId);
-            localStorage.setItem(STORAGE_KEYS.ALERTS, JSON.stringify([data, ...current]));
-          }
+          const current = await this.getAlerts(userId);
+          safeSetItem(STORAGE_KEYS.ALERTS, JSON.stringify([data, ...current]));
           return data;
         }
       } catch (err) {
@@ -1000,11 +1017,9 @@ export class StorageService {
       }
     }
 
-    if (typeof window !== 'undefined') {
-      const current = await this.getAlerts(userId);
-      const updated = [newAlert, ...current];
-      localStorage.setItem(STORAGE_KEYS.ALERTS, JSON.stringify(updated));
-    }
+    const current = await this.getAlerts(userId);
+    const updated = [newAlert, ...current];
+    safeSetItem(STORAGE_KEYS.ALERTS, JSON.stringify(updated));
 
     return newAlert;
   }
@@ -1028,11 +1043,9 @@ export class StorageService {
       }
     }
 
-    if (typeof window !== 'undefined') {
-      const current = await this.getAlerts(userId);
-      const updated = current.map((a) => (a.id === id ? { ...a, is_read: true } : a));
-      localStorage.setItem(STORAGE_KEYS.ALERTS, JSON.stringify(updated));
-    }
+    const current = await this.getAlerts(userId);
+    const updated = current.map((a) => (a.id === id ? { ...a, is_read: true } : a));
+    safeSetItem(STORAGE_KEYS.ALERTS, JSON.stringify(updated));
   }
 
   /**
@@ -1054,11 +1067,9 @@ export class StorageService {
       }
     }
 
-    if (typeof window !== 'undefined') {
-      const current = await this.getAlerts(userId);
-      const updated = current.map((a) => ({ ...a, is_read: true }));
-      localStorage.setItem(STORAGE_KEYS.ALERTS, JSON.stringify(updated));
-    }
+    const current = await this.getAlerts(userId);
+    const updated = current.map((a) => ({ ...a, is_read: true }));
+    safeSetItem(STORAGE_KEYS.ALERTS, JSON.stringify(updated));
   }
 
   /**
@@ -1079,9 +1090,7 @@ export class StorageService {
       }
     }
 
-    if (typeof window !== 'undefined') {
-      localStorage.removeItem(STORAGE_KEYS.ALERTS);
-    }
+    safeRemoveItem(STORAGE_KEYS.ALERTS);
   }
 
   /**
@@ -1109,9 +1118,7 @@ export class StorageService {
             savingsAtRisk: data.savings_at_risk ?? DEFAULT_ALERT_SETTINGS.savingsAtRisk,
             pushNotifications: data.push_notifications ?? DEFAULT_ALERT_SETTINGS.pushNotifications,
           };
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(STORAGE_KEYS.ALERT_SETTINGS, JSON.stringify(settings));
-          }
+          safeSetItem(STORAGE_KEYS.ALERT_SETTINGS, JSON.stringify(settings));
           return settings;
         }
       } catch (err) {
@@ -1119,13 +1126,11 @@ export class StorageService {
       }
     }
 
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem(STORAGE_KEYS.ALERT_SETTINGS);
-      if (stored) {
-        try {
-          return { ...DEFAULT_ALERT_SETTINGS, ...JSON.parse(stored) };
-        } catch {}
-      }
+    const stored = safeGetItem(STORAGE_KEYS.ALERT_SETTINGS);
+    if (stored) {
+      try {
+        return { ...DEFAULT_ALERT_SETTINGS, ...JSON.parse(stored) };
+      } catch {}
     }
 
     return DEFAULT_ALERT_SETTINGS;
@@ -1161,9 +1166,7 @@ export class StorageService {
       }
     }
 
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEYS.ALERT_SETTINGS, JSON.stringify(settings));
-    }
+    safeSetItem(STORAGE_KEYS.ALERT_SETTINGS, JSON.stringify(settings));
   }
 
   /**

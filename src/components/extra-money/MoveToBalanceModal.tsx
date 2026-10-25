@@ -8,6 +8,7 @@ import { StorageService } from '@/lib/storage';
 import { useAuth } from '@/hooks/useAuth';
 import { formatINR, getCurrentMonthKey, formatMonthName } from '@/lib/formatters';
 import { calculateSafeToSpendToday } from '@/lib/calculations';
+import { triggerAlertEvaluation } from '@/lib/alertClient';
 import {
   X,
   Coins,
@@ -109,6 +110,12 @@ export function MoveToBalanceModal({
         },
         userId
       );
+
+      // Re-evaluate alerts on server with newly adjusted spendable balance
+      await triggerAlertEvaluation({
+        userId,
+        month: targetMonth,
+      });
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new Event('savemoney-extra-money-updated'));

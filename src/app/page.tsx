@@ -9,6 +9,7 @@ import { StorageService } from '@/lib/storage';
 import { Account, Expense, BalanceAdjustment } from '@/lib/types';
 import { formatINR, formatMonthName } from '@/lib/formatters';
 import { calculateAccountStats } from '@/lib/accountCalculations';
+import { triggerAlertEvaluation } from '@/lib/alertClient';
 import {
   calculateChartDataForRange,
   calculateCategoryBreakdown,
@@ -643,10 +644,12 @@ export default function DashboardPage() {
         }}
         onDeleteAdjustment={async (id) => {
           await StorageService.deleteBalanceAdjustment(id, userId);
+          await triggerAlertEvaluation({ userId, month: currentMonth });
           refreshBudget();
         }}
         onUndoTransfer={async (id) => {
           await StorageService.undoExtraMoneyTransfer(id, userId);
+          await triggerAlertEvaluation({ userId, month: currentMonth });
           refreshBudget();
         }}
       />

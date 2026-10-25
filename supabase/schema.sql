@@ -205,33 +205,39 @@ create table if not exists public.alerts (
   user_id uuid references auth.users on delete cascade not null,
   type text not null,
   severity text not null check (severity in ('info', 'warning', 'danger')),
+  title text not null default '',
   message text not null,
   is_read boolean default false,
   month text not null,
   dedupe_key text,
+  push_sent_at timestamptz,
+  push_error text,
   created_at timestamptz default now()
 );
 
 alter table public.alerts enable row level security;
 
-create policy "Users can view own alerts" 
+create policy "Users and service role can view alerts" 
   on public.alerts for select 
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id or auth.role() = 'service_role');
 
-create policy "Users can insert own alerts" 
+create policy "Users and service role can insert alerts" 
   on public.alerts for insert 
-  with check (auth.uid() = user_id);
+  with check (auth.uid() = user_id or auth.role() = 'service_role');
 
-create policy "Users can update own alerts" 
+create policy "Users and service role can update alerts" 
   on public.alerts for update 
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id or auth.role() = 'service_role')
+  with check (auth.uid() = user_id or auth.role() = 'service_role');
 
-create policy "Users can delete own alerts" 
+create policy "Users and service role can delete alerts" 
   on public.alerts for delete 
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id or auth.role() = 'service_role');
 
-create index if not exists idx_alerts_user_month_dedupe on public.alerts(user_id, month, dedupe_key);
+create unique index if not exists idx_alerts_user_dedupe on public.alerts (user_id, dedupe_key) where dedupe_key is not null;
+create index if not exists idx_alerts_user_month on public.alerts(user_id, month);
 create index if not exists idx_alerts_user_created on public.alerts(user_id, created_at desc);
+create index if not exists idx_alerts_user_unread on public.alerts(user_id, is_read) where is_read = false;
 
 -- 7. User Alert Settings Table (Stage 4)
 create table if not exists public.user_alert_settings (
@@ -243,6 +249,9 @@ create table if not exists public.user_alert_settings (
   projection_warning boolean default true,
   savings_at_risk boolean default true,
   push_notifications boolean default false,
+  daily_check_in_enabled boolean default true,
+  daily_check_in_time text default '21:00',
+  weekly_reconciliation_reminder boolean default true,
   updated_at timestamptz default now()
 );
 
@@ -250,43 +259,47 @@ alter table public.user_alert_settings enable row level security;
 
 create policy "Users can view own alert settings" 
   on public.user_alert_settings for select 
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id or auth.role() = 'service_role');
 
 create policy "Users can insert own alert settings" 
   on public.user_alert_settings for insert 
-  with check (auth.uid() = user_id);
+  with check (auth.uid() = user_id or auth.role() = 'service_role');
 
 create policy "Users can update own alert settings" 
   on public.user_alert_settings for update 
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id or auth.role() = 'service_role');
 
 -- 8. Push Subscriptions Table (Stage 4 PWA)
 create table if not exists public.push_subscriptions (
   id uuid default gen_random_uuid() primary key,
   user_id uuid references auth.users on delete cascade not null,
-  endpoint text not null unique,
+  endpoint text not null,
   p256dh text not null,
   auth text not null,
-  created_at timestamptz default now()
+  user_agent text,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  constraint uq_push_subs_user_endpoint unique (user_id, endpoint)
 );
 
 alter table public.push_subscriptions enable row level security;
 
-create policy "Users can view own push subscriptions" 
+create policy "Users and service role can view push subscriptions" 
   on public.push_subscriptions for select 
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id or auth.role() = 'service_role');
 
-create policy "Users can insert own push subscriptions" 
+create policy "Users and service role can insert push subscriptions" 
   on public.push_subscriptions for insert 
-  with check (auth.uid() = user_id);
+  with check (auth.uid() = user_id or auth.role() = 'service_role');
 
-create policy "Users can update own push subscriptions" 
+create policy "Users and service role can update push subscriptions" 
   on public.push_subscriptions for update 
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id or auth.role() = 'service_role')
+  with check (auth.uid() = user_id or auth.role() = 'service_role');
 
-create policy "Users can delete own push subscriptions" 
+create policy "Users and service role can delete push subscriptions" 
   on public.push_subscriptions for delete 
-  using (auth.uid() = user_id);
+  using (auth.uid() = user_id or auth.role() = 'service_role');
 
 create index if not exists idx_push_subs_user on public.push_subscriptions(user_id);
 

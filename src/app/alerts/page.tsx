@@ -1,13 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { ExpenseListSkeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { useAuth } from '@/hooks/useAuth';
 import { StorageService } from '@/lib/storage';
+import { supabase } from '@/lib/supabase/client';
 import { AlertItem, AlertSeverity, AlertType } from '@/lib/types';
 import {
   Bell,
@@ -17,10 +19,8 @@ import {
   AlertTriangle,
   AlertCircle,
   Info,
-  SlidersHorizontal,
   Calendar,
-  Sparkles,
-  ShieldAlert,
+  Activity,
 } from 'lucide-react';
 
 type FilterTab = 'all' | 'unread' | 'warnings' | 'daily' | 'thresholds';
@@ -31,20 +31,27 @@ export default function AlertsPage() {
 
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [clearing, setClearing] = useState(false);
 
-  const loadAlerts = async () => {
+  const loadAlerts = useCallback(async () => {
     try {
       setLoading(true);
+      setLoadError(null);
       const items = await StorageService.getAlerts(userId);
       setAlerts(items);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to load alerts:', err);
+      setLoadError(
+        err instanceof Error
+          ? err.message
+          : 'Could not load your spending alerts. Please check your network and Supabase connection.'
+      );
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
   useEffect(() => {
     loadAlerts();
@@ -53,30 +60,81 @@ export default function AlertsPage() {
       loadAlerts();
     };
 
+    const handleFocus = () => {
+      loadAlerts();
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        loadAlerts();
+      }
+    };
+
     if (typeof window !== 'undefined') {
       window.addEventListener('savemoney-alerts-updated', handleUpdate);
+      window.addEventListener('focus', handleFocus);
+      document.addEventListener('visibilitychange', handleVisibility);
       return () => {
         window.removeEventListener('savemoney-alerts-updated', handleUpdate);
+        window.removeEventListener('focus', handleFocus);
+        document.removeEventListener('visibilitychange', handleVisibility);
       };
     }
-  }, [userId]);
+  }, [loadAlerts]);
+
+  // Supabase Realtime subscription
+  useEffect(() => {
+    if (!userId) return;
+
+    try {
+      const channel = supabase
+        .channel(`alerts-page-channel-${userId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'alerts',
+            filter: `user_id=eq.${userId}`,
+          },
+          () => {
+            loadAlerts();
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    } catch (err) {
+      console.warn('Realtime subscription failed on alerts page:', err);
+    }
+  }, [userId, loadAlerts]);
 
   const unreadCount = useMemo(() => alerts.filter((a) => !a.is_read).length, [alerts]);
 
   const handleMarkAllRead = async () => {
-    await StorageService.markAllAlertsAsRead(userId);
     setAlerts((prev) => prev.map((a) => ({ ...a, is_read: true })));
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new Event('savemoney-alerts-updated'));
+    try {
+      await StorageService.markAllAlertsAsRead(userId);
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('savemoney-alerts-updated'));
+      }
+    } catch (err) {
+      console.warn('Failed to mark all alerts read:', err);
     }
   };
 
   const handleMarkOneRead = async (alert: AlertItem) => {
     if (!alert.is_read) {
-      await StorageService.markAlertAsRead(alert.id, userId);
       setAlerts((prev) => prev.map((a) => (a.id === alert.id ? { ...a, is_read: true } : a)));
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new Event('savemoney-alerts-updated'));
+      try {
+        await StorageService.markAlertAsRead(alert.id, userId);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new Event('savemoney-alerts-updated'));
+        }
+      } catch (err) {
+        console.warn('Failed to mark alert read:', err);
       }
     }
   };
@@ -150,44 +208,58 @@ export default function AlertsPage() {
   const getAlertBadge = (type: AlertType, severity: AlertSeverity) => {
     switch (type) {
       case 'over_daily':
-        return { label: "Over Today's Limit", color: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400' };
+        return {
+          label: 'Over Daily Limit',
+          color: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300',
+        };
       case 'under_daily':
-        return { label: 'Under Limit', color: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' };
+        return {
+          label: 'Daily Safe-to-Spend',
+          color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300',
+        };
       case 'threshold_50':
-        return { label: '50% Budget Crossed', color: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' };
+        return {
+          label: '50% Budget Cross',
+          color: 'bg-sky-100 text-sky-700 dark:bg-sky-950/60 dark:text-sky-300',
+        };
       case 'threshold_80':
-        return { label: '80% Budget Crossed', color: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' };
+        return {
+          label: '80% Warning',
+          color: 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300',
+        };
       case 'threshold_100':
-        return { label: '100% Budget Crossed', color: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400' };
+        return {
+          label: '100% Exceeded',
+          color: 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300',
+        };
       case 'projection_warning':
-        return { label: 'Projection Warning', color: 'bg-amber-50 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400' };
+        return {
+          label: 'Projected Over Budget',
+          color: 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300',
+        };
       case 'savings_risk':
-        return { label: 'Savings at Risk', color: 'bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-400' };
+        return {
+          label: 'Savings at Risk',
+          color: 'bg-purple-100 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300',
+        };
       default:
-        return { label: 'Notice', color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300' };
+        return {
+          label: 'Notice',
+          color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+        };
     }
   };
 
   const getSeverityIcon = (severity: AlertSeverity) => {
-    if (severity === 'danger') {
-      return (
-        <div className="w-9 h-9 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 flex items-center justify-center shrink-0">
-          <AlertCircle className="w-5 h-5 stroke-[2.2]" />
-        </div>
-      );
+    switch (severity) {
+      case 'danger':
+        return <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />;
+      case 'warning':
+        return <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />;
+      case 'info':
+      default:
+        return <Info className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />;
     }
-    if (severity === 'warning') {
-      return (
-        <div className="w-9 h-9 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 flex items-center justify-center shrink-0">
-          <AlertTriangle className="w-5 h-5 stroke-[2.2]" />
-        </div>
-      );
-    }
-    return (
-      <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center shrink-0">
-        <Info className="w-5 h-5 stroke-[2.2]" />
-      </div>
-    );
   };
 
   const formatTime = (isoString: string) => {
@@ -247,6 +319,12 @@ export default function AlertsPage() {
               Clear
             </Button>
           )}
+
+          <Link href="/settings/alerts">
+            <Button variant="outline" size="sm" icon={<Activity className="w-3.5 h-3.5" />}>
+              Diagnostics
+            </Button>
+          </Link>
 
           <Link href="/settings">
             <Button variant="outline" size="sm" icon={<Settings className="w-3.5 h-3.5" />}>
@@ -324,9 +402,15 @@ export default function AlertsPage() {
         </button>
       </div>
 
-      {/* Alert List */}
+      {/* Alert Content Area */}
       {loading ? (
         <ExpenseListSkeleton count={5} />
+      ) : loadError ? (
+        <ErrorState
+          title="Failed to load spending alerts"
+          message={loadError}
+          onRetry={loadAlerts}
+        />
       ) : groupedAlerts.length === 0 ? (
         <EmptyState
           icon={<Bell className="w-7 h-7 stroke-[1.8]" />}
@@ -340,9 +424,9 @@ export default function AlertsPage() {
           onAction={() => {
             window.location.href = '/budget';
           }}
-          secondaryActionText="Alert Settings"
+          secondaryActionText="Alert Diagnostics"
           onSecondaryAction={() => {
-            window.location.href = '/settings';
+            window.location.href = '/settings/alerts';
           }}
         />
       ) : (
@@ -388,13 +472,32 @@ export default function AlertsPage() {
                                 • New
                               </span>
                             )}
+                            {alert.push_sent_at && (
+                              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                                🔔 Push Delivered
+                              </span>
+                            )}
+                            {alert.push_error && (
+                              <span
+                                className="text-[10px] text-rose-500 font-medium truncate max-w-xs"
+                                title={alert.push_error}
+                              >
+                                ⚠ Push failed
+                              </span>
+                            )}
                           </div>
+
+                          {alert.title && (
+                            <h4 className="text-xs sm:text-sm font-black text-navy-900 dark:text-white mb-0.5">
+                              {alert.title}
+                            </h4>
+                          )}
 
                           <p
                             className={`text-xs sm:text-sm leading-relaxed ${
                               !alert.is_read
-                                ? 'font-bold text-navy-900 dark:text-white'
-                                : 'text-slate-600 dark:text-slate-300 font-medium'
+                                ? 'font-medium text-navy-900 dark:text-slate-100'
+                                : 'text-slate-600 dark:text-slate-400 font-normal'
                             }`}
                           >
                             {alert.message}
