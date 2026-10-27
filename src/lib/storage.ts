@@ -16,6 +16,7 @@ import {
   ReconciliationRecord,
   DailyCheckInStatus,
   BankStatementMapping,
+  VoiceSettings,
 } from './types';
 import { getCurrentMonthKey } from './formatters';
 import { DEFAULT_ALERT_SETTINGS } from './alertsEngine';
@@ -37,6 +38,8 @@ const STORAGE_KEYS = {
   STATEMENT_MAPPINGS: 'savemoney_statement_mappings',
   DAILY_CHECKIN: 'savemoney_daily_checkin',
   LAST_AUTO_CAPTURE: 'savemoney_last_auto_capture',
+  MERCHANT_RULES: 'savemoney_merchant_rules',
+  VOICE_SETTINGS: 'savemoney_voice_settings',
 };
 
 const memoryFallback: Record<string, string> = {};
@@ -2274,6 +2277,76 @@ export class StorageService {
 
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new Event('savemoney-capture-health-updated'));
+    }
+  }
+
+  // ===========================================================================
+  // VOICE SETTINGS & MERCHANT RULES
+  // ===========================================================================
+
+  static async getVoiceSettings(): Promise<VoiceSettings> {
+    const defaultSettings: VoiceSettings = {
+      autoSaveConfident: false,
+      saveVoiceNoteAsExpenseNote: true,
+    };
+
+    const stored = safeGetItem(STORAGE_KEYS.VOICE_SETTINGS);
+    if (!stored) return defaultSettings;
+
+    try {
+      const parsed = JSON.parse(stored);
+      return { ...defaultSettings, ...parsed };
+    } catch {
+      return defaultSettings;
+    }
+  }
+
+  static async saveVoiceSettings(settings: Partial<VoiceSettings>): Promise<VoiceSettings> {
+    const current = await this.getVoiceSettings();
+    const updated: VoiceSettings = { ...current, ...settings };
+    safeSetItem(STORAGE_KEYS.VOICE_SETTINGS, JSON.stringify(updated));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('savemoney-voice-settings-updated', { detail: updated }));
+    }
+
+    return updated;
+  }
+
+  static async getMerchantRules(): Promise<Record<string, string>> {
+    const stored = safeGetItem(STORAGE_KEYS.MERCHANT_RULES);
+    if (!stored) return {};
+
+    try {
+      return JSON.parse(stored) || {};
+    } catch {
+      return {};
+    }
+  }
+
+  static async setMerchantRule(merchant: string, category: string): Promise<void> {
+    const key = (merchant || '').trim().toLowerCase();
+    if (!key) return;
+
+    const current = await this.getMerchantRules();
+    current[key] = category;
+    safeSetItem(STORAGE_KEYS.MERCHANT_RULES, JSON.stringify(current));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('savemoney-merchant-rules-updated', { detail: current }));
+    }
+  }
+
+  static async deleteMerchantRule(merchant: string): Promise<void> {
+    const key = (merchant || '').trim().toLowerCase();
+    if (!key) return;
+
+    const current = await this.getMerchantRules();
+    delete current[key];
+    safeSetItem(STORAGE_KEYS.MERCHANT_RULES, JSON.stringify(current));
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('savemoney-merchant-rules-updated', { detail: current }));
     }
   }
 }

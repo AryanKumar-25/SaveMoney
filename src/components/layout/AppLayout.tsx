@@ -11,9 +11,29 @@ import { MonthRolloverModal } from '../common/MonthRolloverModal';
 import { ExpenseModalProvider } from '@/context/ExpenseModalContext';
 import { ToastProvider } from '@/context/ToastContext';
 import { QuickAddExpenseModal } from '../expense/QuickAddExpenseModal';
+import { VoiceExpenseModal } from '../expense/VoiceExpenseModal';
 import { FloatingAddExpenseButton } from '../expense/FloatingAddExpenseButton';
+import { useExpenseModal } from '@/context/ExpenseModalContext';
 import { useAuth } from '@/hooks/useAuth';
 import { AlertCircle } from 'lucide-react';
+
+function VoiceParamWatcher() {
+  const { openVoiceAdd } = useExpenseModal();
+
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('voice') === '1') {
+        openVoiceAdd();
+        const url = new URL(window.location.href);
+        url.searchParams.delete('voice');
+        window.history.replaceState({}, '', url.pathname + (url.search ? url.search : ''));
+      }
+    }
+  }, [openVoiceAdd]);
+
+  return null;
+}
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -126,6 +146,12 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
           {/* Quick Add / Edit Expense Modal */}
           <QuickAddExpenseModal onSaved={handleExpenseSaved} />
+
+          {/* Voice Expense Entry Modal */}
+          <VoiceExpenseModal onSaved={handleExpenseSaved} />
+
+          {/* URL ?voice=1 parameter listener */}
+          <VoiceParamWatcher />
 
           {/* Mobile Bottom Navigation */}
           <MobileNav />

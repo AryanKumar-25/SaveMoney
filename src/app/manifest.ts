@@ -21,5 +21,19 @@ export default function manifest(): MetadataRoute.Manifest {
         type: 'image/png',
       },
     ],
+    shortcuts: [
+      {
+        name: 'Voice expense',
+        short_name: 'Voice',
+        description: 'Log an expense using voice recognition',
+        url: '/?voice=1',
+        icons: [
+          {
+            src: '/icon.svg',
+            sizes: 'any',
+          },
+        ],
+      },
+    ],
   };
 }

@@ -10,6 +10,7 @@ import { SupabaseSetupModal } from '@/components/common/SupabaseSetupModal';
 import { CategoryManagement } from '@/components/settings/CategoryManagement';
 import { AlertSettingsCard } from '@/components/settings/AlertSettingsCard';
 import { CaptureHealthCard } from '@/components/settings/CaptureHealthCard';
+import { VoiceSettingsCard } from '@/components/settings/VoiceSettingsCard';
 import {
   Settings as SettingsIcon,
   ShieldCheck,
@@ -321,6 +322,9 @@ export default function SettingsPage() {
           </div>
         </Card>
       </div>
+
+      {/* Voice & Speech Entry Settings */}
+      <VoiceSettingsCard />
 
       {/* Category Management */}
       <CategoryManagement />

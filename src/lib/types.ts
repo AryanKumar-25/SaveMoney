@@ -278,5 +278,11 @@ export interface CaptureHealthStatus {
   showWarning: boolean;
 }
 
+export interface VoiceSettings {
+  autoSaveConfident: boolean;
+  saveVoiceNoteAsExpenseNote: boolean;
+}
+
+
 
 

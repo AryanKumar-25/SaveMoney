@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, Moon, Sun, ShieldCheck, Database, Menu, Plus } from 'lucide-react';
+import { Search, Moon, Sun, ShieldCheck, Database, Menu, Plus, Mic } from 'lucide-react';
 import { useAuth } from '@/hooks/useAuth';
 import { useExpenseModal } from '@/context/ExpenseModalContext';
 import { NotificationDropdown } from '@/components/layout/NotificationDropdown';
@@ -16,7 +16,7 @@ interface TopBarProps {
 export function TopBar({ onToggleMobileMenu, onOpenSupabaseModal }: TopBarProps) {
   const router = useRouter();
   const { user, profile, isConfigured, isDemoMode } = useAuth();
-  const { openQuickAdd } = useExpenseModal();
+  const { openQuickAdd, openVoiceAdd } = useExpenseModal();
   const [darkMode, setDarkMode] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -123,6 +123,17 @@ export function TopBar({ onToggleMobileMenu, onOpenSupabaseModal }: TopBarProps)
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
           <span>Add Expense</span>
+        </button>
+
+        {/* Voice Expense Desktop Button */}
+        <button
+          type="button"
+          onClick={() => openVoiceAdd()}
+          className="hidden sm:inline-flex items-center justify-center p-2 rounded-xl bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/50 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-800/60 active:scale-95 transition-all"
+          title="Voice Expense Entry"
+          aria-label="Voice Expense Entry"
+        >
+          <Mic className="w-4 h-4 stroke-[2.2]" />
         </button>
 
         {/* Supabase Status Pill */}
